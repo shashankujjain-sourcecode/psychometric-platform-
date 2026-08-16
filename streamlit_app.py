@@ -3,86 +3,112 @@ import os
 import streamlit as st
 import pandas as pd
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 # -------------------------------------------------------------
-# 1. PSYCHOMETRIC ITEM BANK & SCORING ENGINE
+# 1. FIXED QUESTION BANK & SCORING TAXONOMY
 # -------------------------------------------------------------
-ITEM_BANK = {
+QUESTIONS = [
     # RIASEC Career Interests
-    "RIA_R01": {"scale": "Realistic", "reverse": False},
-    "RIA_I01": {"scale": "Investigative", "reverse": False},
-    "RIA_A01": {"scale": "Artistic", "reverse": False},
-    "RIA_S01": {"scale": "Social", "reverse": False},
-    "RIA_E01": {"scale": "Enterprising", "reverse": False},
-    "RIA_C01": {"scale": "Conventional", "reverse": False},
-    # Aptitude Dimensions
-    "APT_NUM01": {"scale": "Numerical Aptitude", "reverse": False},
-    "APT_VER01": {"scale": "Verbal Aptitude", "reverse": False},
-    "APT_SPA01": {"scale": "Spatial Reasoning", "reverse": False},
-    # Big Five Traits
-    "IPIP_O01": {"scale": "Openness", "reverse": False},
-    "IPIP_C01": {"scale": "Conscientiousness", "reverse": False},
-}
-
-def calculate_profile(responses_dict):
-    totals, counts = {}, {}
-    for item_id, val in responses_dict.items():
-        if item_id in ITEM_BANK:
-            scale = ITEM_BANK[item_id]["scale"]
-            score = (6 - val) if ITEM_BANK[item_id]["reverse"] else val
-            totals[scale] = totals.get(scale, 0) + score
-            counts[scale] = counts.get(scale, 0) + 1
-
-    scores = {k: round((totals[k] / (counts[k] * 5.0)) * 100, 1) for k in totals}
+    {"id": "RIA_R", "scale": "Realistic", "category": "Career Interest", "text": "Building, repairing, or assembling physical equipment and machines"},
+    {"id": "RIA_I", "scale": "Investigative", "category": "Career Interest", "text": "Solving scientific logic puzzles, data problems, or writing software algorithms"},
+    {"id": "RIA_A", "scale": "Artistic", "category": "Career Interest", "text": "Designing visual media, writing literature, or creating artistic concepts"},
+    {"id": "RIA_S", "scale": "Social", "category": "Career Interest", "text": "Teaching, counseling, mentoring, and helping individuals solve problems"},
+    {"id": "RIA_E", "scale": "Enterprising", "category": "Career Interest", "text": "Leading teams, debating, marketing products, and managing business operations"},
+    {"id": "RIA_C", "scale": "Conventional", "category": "Career Interest", "text": "Managing structured records, tracking financial data, and organizing schedules"},
     
+    # Cognitive Aptitudes
+    {"id": "APT_NUM", "scale": "Numerical Aptitude", "category": "Aptitude", "text": "Solving complex mathematical equations and quantitative problems accurately"},
+    {"id": "APT_VER", "scale": "Verbal Aptitude", "category": "Aptitude", "text": "Comprehending long informational texts and communicating ideas fluently"},
+    {"id": "APT_SPA", "scale": "Spatial Reasoning", "category": "Aptitude", "text": "Visualizing 3D transformations, architectural spaces, and geometric patterns"},
+    
+    # Personality & Work Style
+    {"id": "IPIP_OPN", "scale": "Curiosity & Openness", "category": "Personality", "text": "Exploring unconventional theories, philosophy, and innovative concepts"},
+    {"id": "IPIP_CON", "scale": "Conscientiousness & Focus", "category": "Personality", "text": "Setting structured study schedules and consistently completing tasks on time"}
+]
+
+def score_assessment(answers: dict):
+    scores = {}
+    for q in QUESTIONS:
+        val = answers.get(q["id"], 3)
+        scores[q["scale"]] = round((val / 5.0) * 100, 1)
+
+    # Stream Match Evaluation Matrix
     streams = []
-    r_score = scores.get("Realistic", 0)
-    i_score = scores.get("Investigative", 0)
-    a_score = scores.get("Artistic", 0)
-    s_score = scores.get("Social", 0)
-    e_score = scores.get("Enterprising", 0)
-    c_score = scores.get("Conventional", 0)
-    num_score = scores.get("Numerical Aptitude", 0)
-    verb_score = scores.get("Verbal Aptitude", 0)
+    num = scores.get("Numerical Aptitude", 0)
+    verb = scores.get("Verbal Aptitude", 0)
+    r = scores.get("Realistic", 0)
+    i = scores.get("Investigative", 0)
+    a = scores.get("Artistic", 0)
+    s = scores.get("Social", 0)
+    e = scores.get("Enterprising", 0)
+    c = scores.get("Conventional", 0)
 
-    if (r_score >= 50 or i_score >= 50) and num_score >= 50:
-        streams.append({"stream": "Science (PCM)", "fit": "High", "careers": "Engineering, Data Science, Physical Sciences"})
-    if (i_score >= 50 or s_score >= 50) and verb_score >= 45:
-        streams.append({"stream": "Science (PCB)", "fit": "High", "careers": "Medicine, Biotechnology, Psychology"})
-    if e_score >= 50 or c_score >= 50:
-        math_tag = "with Math" if num_score >= 50 else "General"
-        streams.append({"stream": f"Commerce ({math_tag})", "fit": "High", "careers": "Finance, CA, Management, Economics"})
-    if a_score >= 50 or s_score >= 50:
-        streams.append({"stream": "Humanities / Arts", "fit": "High", "careers": "Law, Journalism, Design, Civil Services"})
-    if not streams:
-        streams.append({"stream": "General Interdisciplinary", "fit": "Moderate", "careers": "Liberal Arts, Business Administration"})
+    # PCM
+    pcm_fit = int((i * 0.4) + (num * 0.4) + (r * 0.2))
+    streams.append({
+        "stream": "Science (PCM)",
+        "fit_score": pcm_fit,
+        "rating": "High Fit" if pcm_fit >= 70 else ("Moderate Fit" if pcm_fit >= 50 else "Exploratory"),
+        "curriculum": "Physics, Chemistry, Mathematics, CS / Informatics",
+        "careers": "Software Engineering, Aerospace, Data Science, Architecture"
+    })
 
+    # PCB
+    pcb_fit = int((i * 0.4) + (s * 0.3) + (verb * 0.3))
+    streams.append({
+        "stream": "Science (PCB)",
+        "fit_score": pcb_fit,
+        "rating": "High Fit" if pcb_fit >= 70 else ("Moderate Fit" if pcb_fit >= 50 else "Exploratory"),
+        "curriculum": "Physics, Chemistry, Biology, Psychology",
+        "careers": "Medicine (MBBS), Biotechnology, Clinical Psychology, Genetics"
+    })
+
+    # Commerce with Math
+    comm_math_fit = int((e * 0.35) + (c * 0.35) + (num * 0.3))
+    streams.append({
+        "stream": "Commerce (with Applied Mathematics)",
+        "fit_score": comm_math_fit,
+        "rating": "High Fit" if comm_math_fit >= 70 else ("Moderate Fit" if comm_math_fit >= 50 else "Exploratory"),
+        "curriculum": "Accountancy, Economics, Business Studies, Applied Math",
+        "careers": "Chartered Accountancy (CA), Investment Banking, Actuarial Science"
+    })
+
+    # Humanities / Arts
+    hum_fit = int((a * 0.4) + (s * 0.3) + (verb * 0.3))
+    streams.append({
+        "stream": "Humanities / Liberal Arts",
+        "fit_score": hum_fit,
+        "rating": "High Fit" if hum_fit >= 70 else ("Moderate Fit" if hum_fit >= 50 else "Exploratory"),
+        "curriculum": "History, Political Science, Sociology, English, Psychology",
+        "careers": "Corporate Law, Civil Services (UPSC), Media & Journalism, Design"
+    })
+
+    streams.sort(key=lambda x: x["fit_score"], reverse=True)
     return scores, streams
 
 # -------------------------------------------------------------
-# 2. AI COUNSELOR INTEGRATION (GEMINI / OPENAI / FALLBACK)
+# 2. AI COUNSELOR SYNTHESIS (GEMINI / OPENAI)
 # -------------------------------------------------------------
-def get_ai_counselor_summary(name, grade, scores, streams, provider="gemini"):
+def get_ai_counselor_narrative(name, grade, scores, streams, provider="gemini"):
     gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
     openai_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
     prompt = f"""
-    You are an expert school psychologist and career counselor in India.
-    Provide a supportive, empowering 3-paragraph counseling narrative for a student.
-    
-    Student Name: {name}
-    Current Grade: Class {grade}
-    Psychometric Profile Scores: {scores}
-    Recommended Streams: {[s['stream'] for s in streams]}
-    
-    Structure:
-    1. Acknowledge top cognitive and interest strengths.
-    2. Explain the fit for Class 11/12 Indian academic streams.
-    3. Suggest two concrete skill development areas.
-    Keep the tone objective, encouraging, and under 150 words.
+    You are an expert school psychologist and career guidance counselor in India.
+    Provide a professional, multi-paragraph counseling narrative for:
+    Student: {name} (Class {grade})
+    Top Stream Match: {streams[0]['stream']} (Fit Score: {streams[0]['fit_score']}%)
+    Secondary Stream: {streams[1]['stream']} (Fit Score: {streams[1]['fit_score']}%)
+    Scores: {scores}
+
+    Provide:
+    1. Core Strengths: Highlight top cognitive and interest drivers.
+    2. Academic Path Recommendation: Explain why their primary stream fits their Class 11/12 goals.
+    3. Action Plan: 2 specific development areas for academic transitions.
+    Keep the tone encouraging, structured, and under 175 words.
     """
 
     if provider == "gemini" and gemini_key:
@@ -101,175 +127,251 @@ def get_ai_counselor_summary(name, grade, scores, streams, provider="gemini"):
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=250
+                max_tokens=280
             )
             return completion.choices[0].message.content
         except Exception:
             pass
 
-    top_stream = streams[0]["stream"] if streams else "General Studies"
     return (
-        f"{name} demonstrates a balanced cognitive and interest profile with strong alignment toward "
-        f"the {top_stream} stream. Focusing on analytical concepts while engaging in project-based learning "
-        f"will provide clear direction for higher secondary education."
+        f"{name} demonstrates strong alignment with {streams[0]['stream']} based on balanced scores in "
+        f"analytical and domain-specific interest areas. The student exhibits the cognitive aptitudes "
+        f"and work consistency required for rigorous higher secondary coursework. Engaging with advanced "
+        f"problem-solving exercises and participating in applied project workshops will reinforce these core strengths."
     )
 
 # -------------------------------------------------------------
-# 3. DIRECT PDF GENERATION
+# 3. SECTIONAL MULTI-PAGE PDF GENERATOR
 # -------------------------------------------------------------
-def create_pdf_report(name, grade, scores, streams, ai_text):
+def make_progress_bar_table(score: float, width: float = 120):
+    score = max(0.0, min(100.0, score))
+    fill_w = (score / 100.0) * width
+    empty_w = width - fill_w
+
+    bar_cells = [["", ""]]
+    col_widths = [fill_w, empty_w] if fill_w > 0 and empty_w > 0 else ([width] if fill_w == 100 else [width])
+    
+    t = Table(bar_cells, colWidths=col_widths, rowHeights=[8])
+    fill_color = colors.HexColor("#2563EB") if score >= 60 else (colors.HexColor("#059669") if score >= 40 else colors.HexColor("#D97706"))
+    
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), fill_color if fill_w > 0 else colors.HexColor("#E5E7EB")),
+        ('BACKGROUND', (1, 0), (1, 0), colors.HexColor("#E5E7EB")) if len(col_widths) > 1 else ('BACKGROUND', (0,0), (-1,-1), fill_color),
+        ('PADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    return t
+
+def generate_detailed_pdf(name: str, grade: int, scores: dict, streams: list, ai_text: str) -> bytes:
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter,
+        leftMargin=36, rightMargin=36, topMargin=32, bottomMargin=32
+    )
     styles = getSampleStyleSheet()
     story = []
 
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor("#1E3A8A"))
-    h2_style = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor("#1D4ED8"), spaceBefore=6, spaceAfter=4)
-    body_style = ParagraphStyle('Body', parent=styles['Normal'], fontSize=9, leading=12)
-    italic_body = ParagraphStyle('ItalicBody', parent=styles['Normal'], fontSize=8, leading=10, fontName='Helvetica-Oblique', textColor=colors.gray)
+    # Custom Color Palette
+    PRIMARY = colors.HexColor("#0F172A")
+    ACCENT = colors.HexColor("#1D4ED8")
+    BG_LIGHT = colors.HexColor("#F8FAFC")
+    BORDER_COLOR = colors.HexColor("#CBD5E1")
 
-    story.append(Paragraph("Student Psychometric & Career Evaluation Report", title_style))
-    story.append(Paragraph(f"<b>Student:</b> {name} &nbsp;|&nbsp; <b>Grade:</b> Class {grade} &nbsp;|&nbsp; <b>Framework:</b> IPIP & RIASEC", body_style))
+    title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=PRIMARY, fontName='Helvetica-Bold')
+    h2_style = ParagraphStyle('SectionHeader', parent=styles['Heading2'], fontSize=11, leading=14, textColor=ACCENT, fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=4)
+    body_style = ParagraphStyle('BodyTextCustom', parent=styles['Normal'], fontSize=8.5, leading=12, textColor=colors.HexColor("#334155"))
+    meta_style = ParagraphStyle('MetaText', parent=styles['Normal'], fontSize=8.5, leading=11, textColor=colors.HexColor("#475569"))
+
+    # ================= PAGE 1: EXECUTIVE DASHBOARD =================
+    # Header Banner Table
+    banner_data = [
+        [Paragraph(f"<b>STUDENT PSYCHOMETRIC ASSESSMENT REPORT</b>", title_style), ""],
+        [Paragraph(f"<b>Candidate:</b> {name} &nbsp;|&nbsp; <b>Academic Level:</b> Class {grade} &nbsp;|&nbsp; <b>Standard:</b> CBSE/ICSE Stream Profiler", meta_style), ""]
+    ]
+    banner_table = Table(banner_data, colWidths=[400, 140])
+    banner_table.setStyle(TableStyle([
+        ('LINEBELOW', (0, 1), (-1, 1), 1.5, ACCENT),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('PADDING', (0,0), (-1,-1), 0),
+    ]))
+    story.append(banner_table)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph("AI Counselor Analysis & Recommendations", h2_style))
-    story.append(Paragraph(ai_text.replace("\n", "<br/>"), body_style))
+    # Section 1: AI Counselor Insight Box
+    story.append(Paragraph("1. EXECUTIVE COUNSELOR EVALUATION", h2_style))
+    ai_box_data = [[Paragraph(ai_text.replace("\n", "<br/>"), body_style)]]
+    ai_box_table = Table(ai_box_data, colWidths=[540])
+    ai_box_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#BFDBFE")),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(ai_box_table)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph("Recommended Academic Streams (Class 11/12)", h2_style))
-    stream_rows = [["Recommended Stream", "Fit Level", "Example Pathways"]]
+    # Section 2: Class 11/12 Academic Stream Suitability Matrix
+    story.append(Paragraph("2. ACADEMIC STREAM FITMENT MATRIX (CLASS 11 & 12)", h2_style))
+    stream_rows = [["Academic Stream", "Fit Score", "Suitability", "Recommended Subject Tracks"]]
     for s in streams:
-        stream_rows.append([s['stream'], s['fit'], s['careers']])
+        stream_rows.append([
+            Paragraph(f"<b>{s['stream']}</b>", body_style),
+            f"{s['fit_score']}%",
+            s['rating'],
+            Paragraph(s['curriculum'], body_style)
+        ])
     
-    t_stream = Table(stream_rows, colWidths=[150, 75, 315])
-    t_stream.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#EFF6FF")),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8.5),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#BFDBFE")),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+    stream_table = Table(stream_rows, colWidths=[150, 60, 80, 250])
+    stream_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E293B")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, BG_LIGHT]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
-    story.append(t_stream)
+    story.append(stream_table)
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph("Trait & Aptitude Scores (0 - 100%)", h2_style))
-    score_rows = [["Dimension", "Score", "Dimension", "Score"]]
-    items = list(scores.items())
-    for i in range(0, len(items), 2):
-        col1_name, col1_val = items[i]
-        col2_name, col2_val = items[i+1] if i+1 < len(items) else ("", "")
-        score_rows.append([col1_name, f"{col1_val}%" if col1_val != "" else "", col2_name, f"{col2_val}%" if col2_val != "" else ""])
+    # Section 3: Dimensional Psychometric Scorecards
+    story.append(Paragraph("3. PSYCHOMETRIC & COGNITIVE PROFILE SCORECARDS", h2_style))
+    
+    score_rows = [["Dimension Scale", "Score", "Visualization", "Domain Category"]]
+    for q in QUESTIONS:
+        scale_name = q["scale"]
+        score_val = scores.get(scale_name, 0.0)
+        score_rows.append([
+            Paragraph(scale_name, body_style),
+            f"{score_val}%",
+            make_progress_bar_table(score_val, width=110),
+            Paragraph(q["category"], meta_style)
+        ])
 
-    t_scores = Table(score_rows, colWidths=[190, 80, 190, 80])
-    t_scores.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#F3F4F6")),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
+    score_table = Table(score_rows, colWidths=[160, 50, 120, 210])
+    score_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#E2E8F0")),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
     ]))
-    story.append(t_scores)
+    story.append(score_table)
     story.append(Spacer(1, 10))
 
+    # Section 4: Target Career Clusters & Degrees
+    story.append(Paragraph("4. RECOMMENDED DEGREE & CAREER TRAJECTORIES", h2_style))
+    career_rows = [["Academic Stream", "Primary Career Trajectories"]]
+    for s in streams[:3]:
+        career_rows.append([
+            Paragraph(f"<b>{s['stream']}</b>", body_style),
+            Paragraph(s['careers'], body_style)
+        ])
+    
+    career_table = Table(career_rows, colWidths=[150, 390])
+    career_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(career_table)
+    story.append(Spacer(1, 10))
+
+    # Regulatory & Guidance Disclaimer
     disclaimer = (
-        "Disclaimer: This report is an educational guidance summary generated using open-domain psychological inventories. "
-        "It does not constitute a clinical psychological assessment."
+        "<b>Compliance & Governance Note:</b> This evaluation is an algorithmic educational advisory tool designed "
+        "using open-domain constructs (Holland RIASEC & IPIP Five-Factor). It does not constitute clinical or psychiatric certification. "
+        "Indian DPDP Act (Minor Consent) data standards apply."
     )
-    story.append(Paragraph(disclaimer, italic_body))
+    story.append(Paragraph(disclaimer, ParagraphStyle('DiscStyle', parent=styles['Normal'], fontSize=7, leading=9, textColor=colors.HexColor("#64748B"))))
 
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
 
 # -------------------------------------------------------------
-# 4. STREAMLIT APPLICATION INTERFACE
+# 4. STREAMLIT USER INTERFACE
 # -------------------------------------------------------------
-st.set_page_config(page_title="Psychometric Testing Platform", layout="wide")
-st.title("Student Psychometric & Stream Selection Portal")
+st.set_page_config(page_title="Psychometric & Career Portal", layout="wide")
+st.title("Student Psychometric & Career Stream Assessment")
+st.caption("Standardized Class 8–12 Assessment Battery with Sectional PDF Reporting")
 
-tabs = st.tabs(["Individual Student Assessment", "Paper Test Batch Upload (Excel)"])
+col_a, col_b, col_c = st.columns(3)
+with col_a:
+    student_name = st.text_input("Candidate Full Name", value="Ananya Deshmukh")
+with col_b:
+    student_grade = st.selectbox("Current Academic Grade", [8, 9, 10, 11, 12], index=2)
+with col_c:
+    ai_engine = st.selectbox("AI Counseling Engine", ["gemini", "openai"])
 
-with tabs[0]:
-    st.subheader("Take the Assessment")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        name = st.text_input("Student Name", value="Aarav Sharma")
-    with col2:
-        grade = st.selectbox("Current Grade", options=[8, 9, 10, 11, 12], index=2)
-    with col3:
-        provider = st.selectbox("AI Model Engine", options=["gemini", "openai"])
+st.markdown("---")
+st.subheader("Assessment Questionnaire")
+st.markdown("Evaluate the degree to which each statement reflects the student's natural interests and abilities (1 = Strongly Disagree, 5 = Strongly Agree).")
 
-    st.markdown("---")
-    st.markdown("#### Rate each statement from 1 (*Strongly Disagree*) to 5 (*Strongly Agree*):")
+answers = {}
 
-    st.markdown("##### Part 1: Career Interests (RIASEC)")
-    q1 = st.slider("1. I enjoy mechanical tools, repairing, or building things.", 1, 5, 3)
-    q2 = st.slider("2. I like science experiments, logic puzzles, or coding.", 1, 5, 4)
-    q3 = st.slider("3. I like creative arts, writing, and design.", 1, 5, 2)
-    q4 = st.slider("4. I enjoy teaching, volunteering, and mentoring others.", 1, 5, 4)
-    q5 = st.slider("5. I like leading projects, debate, and business strategy.", 1, 5, 5)
-    q6 = st.slider("6. I prefer clear routines, organization, and data management.", 1, 5, 3)
+# Partition questions by Category
+cat_interests = [q for q in QUESTIONS if q["category"] == "Career Interest"]
+cat_aptitude = [q for q in QUESTIONS if q["category"] == "Aptitude"]
+cat_personality = [q for q in QUESTIONS if q["category"] == "Personality"]
 
-    st.markdown("##### Part 2: Cognitive Aptitude")
-    q7 = st.slider("7. I solve math equations and numerical logic quickly.", 1, 5, 4)
-    q8 = st.slider("8. I express ideas clearly in English and comprehend long passages.", 1, 5, 4)
-    q9 = st.slider("9. I can easily visualize 3D spaces and diagram patterns.", 1, 5, 3)
+st.markdown("#### Section A: Career & Activity Interests (Holland RIASEC)")
+col1, col2 = st.columns(2)
+for idx, q in enumerate(cat_interests):
+    target_col = col1 if idx % 2 == 0 else col2
+    with target_col:
+        answers[q["id"]] = st.slider(f"{q['scale']}: {q['text']}", 1, 5, 4, key=q["id"])
 
-    st.markdown("##### Part 3: Work & Learning Personality")
-    q10 = st.slider("10. I love exploring new concepts and big theoretical ideas.", 1, 5, 4)
-    q11 = st.slider("11. I keep my study tasks organized and complete work on time.", 1, 5, 4)
+st.markdown("#### Section B: Cognitive & Problem-Solving Aptitudes")
+col3, col4 = st.columns(2)
+for idx, q in enumerate(cat_aptitude):
+    target_col = col3 if idx % 2 == 0 else col4
+    with target_col:
+        answers[q["id"]] = st.slider(f"{q['scale']}: {q['text']}", 1, 5, 4, key=q["id"])
 
-    if st.button("Generate Assessment Report", type="primary"):
-        test_inputs = {
-            "RIA_R01": q1, "RIA_I01": q2, "RIA_A01": q3, "RIA_S01": q4, "RIA_E01": q5,
-            "RIA_C01": q6, "APT_NUM01": q7, "APT_VER01": q8, "APT_SPA01": q9,
-            "IPIP_O01": q10, "IPIP_C01": q11
-        }
-        with st.spinner("Calculating profile and generating AI insights..."):
-            scores, streams = calculate_profile(test_inputs)
-            ai_summary = get_ai_counselor_summary(name, grade, scores, streams, provider)
+st.markdown("#### Section C: Learning Style & Work Habits")
+col5, col6 = st.columns(2)
+for idx, q in enumerate(cat_personality):
+    target_col = col5 if idx % 2 == 0 else col6
+    with target_col:
+        answers[q["id"]] = st.slider(f"{q['scale']}: {q['text']}", 1, 5, 4, key=q["id"])
 
-            st.success("Analysis Complete!")
-            
-            st.markdown("### AI Counselor Guidance")
-            st.info(ai_summary)
+st.markdown("---")
 
-            st.markdown("### Recommended Academic Streams")
-            for s in streams:
-                st.markdown(f"- **{s['stream']}** ({s['fit']} Fit) — *{s['careers']}*")
+if st.button("Generate Detailed Assessment & Sectional PDF", type="primary"):
+    with st.spinner("Calculating fitment matrix and compiling sectional report..."):
+        scores, streams = score_assessment(answers)
+        ai_narrative = get_ai_counselor_narrative(student_name, student_grade, scores, streams, ai_engine)
+        
+        st.success("Report Generated Successfully!")
 
-            pdf_bytes = create_pdf_report(name, grade, scores, streams, ai_summary)
-            st.download_button(
-                label="Download Official PDF Report",
-                data=pdf_bytes,
-                file_name=f"{name}_Psychometric_Report.pdf",
-                mime="application/pdf"
-            )
+        # UI Section 1: Executive Summary
+        st.markdown("### 1. AI Counselor Summary")
+        st.info(ai_narrative)
 
-with tabs[1]:
-    st.subheader("Process Paper Tests from Excel")
-    st.markdown("Upload an `.xlsx` file containing student responses matched to question IDs.")
-    
-    batch_provider = st.selectbox("AI Engine for Batch Evaluation", options=["gemini", "openai"], key="batch_ai")
-    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
-    
-    if uploaded_file and st.button("Process Batch Upload"):
-        with st.spinner("Processing batch records..."):
-            df = pd.read_excel(uploaded_file)
-            results = []
-            for _, row in df.iterrows():
-                resp = {col: int(row[col]) for col in df.columns if col in ITEM_BANK and pd.notna(row[col])}
-                scores, streams = calculate_profile(resp)
-                ai_sum = get_ai_counselor_summary(str(row.get("student_name", "Student")), int(row.get("grade", 10)), scores, streams, batch_provider)
-                
-                results.append({
-                    "Student ID": row.get("student_id", "N/A"),
-                    "Name": row.get("student_name", "N/A"),
-                    "Grade": row.get("grade", "N/A"),
-                    "Recommended Stream": streams[0]["stream"] if streams else "General",
-                    "AI Summary": ai_sum[:120] + "..."
-                })
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
+        # UI Section 2: Stream Recommendation Cards
+        st.markdown("### 2. Recommended Academic Streams")
+        s_cols = st.columns(len(streams))
+        for i, s in enumerate(streams):
+            with s_cols[i]:
+                st.metric(label=s["stream"], value=f"{s['fit_score']}%", delta=s["rating"])
+                st.caption(f"**Curriculum:** {s['curriculum']}")
+
+        # UI Section 3: Download Button
+        pdf_bytes = generate_detailed_pdf(student_name, student_grade, scores, streams, ai_narrative)
+        st.download_button(
+            label="📄 Download Official Sectional PDF Report",
+            data=pdf_bytes,
+            file_name=f"{student_name}_Comprehensive_Career_Report.pdf",
+            mime="application/pdf"
+        )
